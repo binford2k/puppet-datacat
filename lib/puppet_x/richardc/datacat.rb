@@ -10,6 +10,41 @@ module Puppet_X
                 newval
         end
       end
+
+      def self.encrypt(data, destination)
+        raise Puppet::ArgumentError, 'Can only encrypt strings' unless data.class == String
+        raise Puppet::ArgumentError, 'Need a node name to encrypt for' unless destination.class == String
+
+        ssldir = Puppet.settings[:ssldir]
+        cert   = OpenSSL::X509::Certificate.new(File.read("#{ssldir}/ca/ca_crt.pem"))
+        key    = OpenSSL::PKey::RSA.new(File.read("#{ssldir}/ca/ca_key.pem"), '')
+        target = OpenSSL::X509::Certificate.new(File.read("#{ssldir}/ca/signed/#{destination}.pem"))
+
+        signed = OpenSSL::PKCS7::sign(cert, key, data, [], OpenSSL::PKCS7::BINARY)
+        cipher = OpenSSL::Cipher::new("AES-128-CFB")
+
+        OpenSSL::PKCS7::encrypt([target], signed.to_der, cipher, OpenSSL::PKCS7::BINARY).to_s
+      end
+
+      def self.decrypt(data)
+        raise Puppet::ArgumentError, 'Can only decrypt strings' unless data.class == String
+
+        ssldir = Puppet.settings[:ssldir]
+        name   = Puppet.settings[:certname]
+        cert   = OpenSSL::X509::Certificate.new(File.read("#{ssldir}/certs/#{name}.pem"))
+        key    = OpenSSL::PKey::RSA.new(File.read("#{ssldir}/private_keys/#{name}.pem"), '')
+        source = OpenSSL::X509::Certificate.new(File.read("#{ssldir}/certs/ca.pem"))
+
+        store = OpenSSL::X509::Store.new
+        store.add_cert(source)
+
+        blob      = OpenSSL::PKCS7.new(data)
+        decrypted = blob.decrypt(key, cert)
+        verified  = OpenSSL::PKCS7.new(decrypted)
+
+        verified.verify(nil, store, nil, OpenSSL::PKCS7::NOVERIFY)
+        verified.data
+      end
     end
 
     # Our much simpler version of Puppet::Parser::TemplateWrapper
