@@ -10,10 +10,12 @@ Puppet::Type.type(:datacat_collector).provide(:datacat_collector) do
     end
 
     # decrypt any encrypted fragments
-    fragments.each do |fragment|
-      next unless fragment[:encrypted] == :true
-      fragment[:data].each do |key,value|
-        fragment[:data][key] = Puppet_X::Richardc::Datacat.decrypt(value)
+    if defined?(Puppet_X::Binford2k::NodeEncrypt)
+      fragments.each do |fragment|
+        fragment[:data].each do |key,value|
+          next unless Puppet_X::Binford2k::NodeEncrypt.encrypted?(value)
+          fragment[:data][key] = Puppet_X::Binford2k::NodeEncrypt.decrypt(value)
+        end
       end
     end
 
